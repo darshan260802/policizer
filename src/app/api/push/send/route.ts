@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
     const payload = JSON.stringify({ title, body, url });
     
-    const sendPromises = subs.map((sub) => {
+    const sendPromises = subs.map((sub: any) => {
       const pushSubscription = {
         endpoint: sub.endpoint,
         keys: {
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
           auth: sub.auth,
         },
       };
-      return webpush.sendNotification(pushSubscription, payload).catch((err) => {
+      return webpush.sendNotification(pushSubscription, payload).catch((err: any) => {
         if (err.statusCode === 410) {
           return prisma.pushSubscription.delete({ where: { id: sub.id } });
         }
