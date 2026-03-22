@@ -5,18 +5,23 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Policy } from "@prisma/client";
+import { calculateNextPremiumDate, formatDate } from "@/lib/dateUtils";
 
 export function ExportButtons({ policies }: { policies: Policy[] }) {
   const exportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(policies.map(p => ({
-      Beneficiary: p.beneficiary,
-      "Premium Method": p.premiumMethod,
-      "Start Date": new Date(p.startDate).toLocaleDateString(),
-      "Last Premium": p.lastPremiumDate ? new Date(p.lastPremiumDate).toLocaleDateString() : "-",
-      "Premium Amount": p.premiumAmount,
-      "Sum Assured": p.sumAssured,
-      "Note": p.note || "-",
-    })));
+    const ws = XLSX.utils.json_to_sheet(policies.map(p => {
+      const nextDate = calculateNextPremiumDate(p.startDate, p.premiumMethod, p.lastPremiumDate);
+      return {
+        Beneficiary: p.beneficiary,
+        "Premium Method": p.premiumMethod,
+        "Start Date": formatDate(p.startDate),
+        "End Date": formatDate(p.lastPremiumDate),
+        "Next Premium": nextDate ? formatDate(nextDate) : "COMPLETED",
+        "Premium Amount": p.premiumAmount,
+        "Sum Assured": p.sumAssured,
+        "Note": p.note || "-",
+      };
+    }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Policies");
     XLSX.writeFile(wb, "policies.xlsx");
@@ -25,15 +30,18 @@ export function ExportButtons({ policies }: { policies: Policy[] }) {
   const exportPDF = () => {
     const doc = new jsPDF();
     autoTable(doc, {
-      head: [["Beneficiary", "Method", "Start Date", "Last Premium", "Premium", "Sum Assured"]],
-      body: policies.map((p) => [
-        p.beneficiary,
-        p.premiumMethod,
-        new Date(p.startDate).toLocaleDateString(),
-        p.lastPremiumDate ? new Date(p.lastPremiumDate).toLocaleDateString() : "-",
-        `$${p.premiumAmount}`,
-        `$${p.sumAssured}`,
-      ]),
+      head: [["Beneficiary", "Method", "Start Date", "End Date", "Next Premium", "Amount"]],
+      body: policies.map((p) => {
+        const nextDate = calculateNextPremiumDate(p.startDate, p.premiumMethod, p.lastPremiumDate);
+        return [
+          p.beneficiary,
+          p.premiumMethod,
+          formatDate(p.startDate),
+          formatDate(p.lastPremiumDate),
+          nextDate ? formatDate(nextDate) : "COMPLETED",
+          `$${p.premiumAmount}`,
+        ];
+      }),
     });
     doc.save("policies.pdf");
   };

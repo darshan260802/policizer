@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import webpush from "@/lib/webpush";
+import { calculateNextPremiumDate, formatDate } from "@/lib/dateUtils";
 
 export async function GET() {
   try {
@@ -20,22 +21,13 @@ export async function GET() {
     for (const policy of policies) {
       if (!policy.user.subscriptions.length) continue;
 
-      let nextDate = new Date(policy.lastPremiumDate || policy.startDate);
-      switch (policy.premiumMethod) {
-        case "monthly": nextDate.setMonth(nextDate.getMonth() + 1); break;
-        case "quarterly": nextDate.setMonth(nextDate.getMonth() + 3); break;
-        case "half_yearly": nextDate.setMonth(nextDate.getMonth() + 6); break;
-        case "yearly": nextDate.setFullYear(nextDate.getFullYear() + 1); break;
-        case "single": continue;
-      }
+      const nextDate = calculateNextPremiumDate(policy.startDate, policy.premiumMethod, policy.lastPremiumDate);
 
-      nextDate.setHours(0, 0, 0, 0);
-
-      if (nextDate >= today && nextDate <= targetDate) {
+      if (nextDate && nextDate >= today && nextDate <= targetDate) {
         const payload = JSON.stringify({
           title: "Premium Reminder",
-          body: `Premium for ${policy.beneficiary} is due on ${nextDate.toLocaleDateString()}`,
-          url: "/dashboard"
+          body: `Premium for ${policy.beneficiary} is due on ${formatDate(nextDate)}`,
+          url: "/",
         });
 
         for (const sub of policy.user.subscriptions) {

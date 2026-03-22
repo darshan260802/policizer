@@ -76,8 +76,8 @@ export function PolicyForm({ onSuccess }: { onSuccess?: () => void }) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Last Premium Date</label>
-          <input required type="date" name="lastPremiumDate" className={inputClass} />
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">End Date (Maturity)</label>
+          <input type="date" name="lastPremiumDate" className={inputClass} />
         </div>
 
         <div>
