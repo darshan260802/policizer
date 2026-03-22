@@ -47,7 +47,7 @@ export async function POST(req: Request) {
         const payload = JSON.stringify({
           title: "Upcoming Premium!",
           body: `Premium for ${policy.beneficiary} is due within 10 days on ${formatDate(nextDate)}`,
-          url: "/dashboard"
+          url: `/dashboard?highlight=${policy.id}`
         });
 
         for (const sub of policy.user.subscriptions) {

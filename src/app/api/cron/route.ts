@@ -27,7 +27,7 @@ export async function GET() {
         const payload = JSON.stringify({
           title: "Premium Reminder",
           body: `Premium for ${policy.beneficiary} is due on ${formatDate(nextDate)}`,
-          url: "/",
+          url: `/dashboard?highlight=${policy.id}`,
         });
 
         for (const sub of policy.user.subscriptions) {

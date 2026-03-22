@@ -4,13 +4,29 @@ import { Policy } from "@prisma/client";
 import { calculateNextPremiumDate, formatDate } from "@/lib/dateUtils";
 import { Trash2, Edit2, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function PolicyTable({ policies }: { policies: Policy[] }) {
   const router = useRouter();
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("highlight")) {
+        setHighlightId(params.get("highlight"));
+        const timer = setTimeout(() => {
+          setHighlightId(null);
+          // Gently remove param from URL without causing reload
+          window.history.replaceState(null, '', window.location.pathname);
+        }, 5000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, []);
 
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this policy?")) return;
@@ -53,6 +69,27 @@ export function PolicyTable({ policies }: { policies: Policy[] }) {
     return formatDate(nextDate);
   };
 
+  const getBadgeColor = (policy: Policy) => {
+    if (policy.premiumMethod === "single") return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+    const nextDate = calculateNextPremiumDate(policy.startDate, policy.premiumMethod, policy.lastPremiumDate);
+    if (!nextDate) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+    
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const diffTime = nextDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800 animate-pulse";
+    } else if (diffDays <= 10) {
+      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800";
+    } else if (diffDays <= 30) {
+      return "bg-lime-100 text-lime-800 dark:bg-lime-900/40 dark:text-lime-300 border-lime-200 dark:border-lime-800";
+    } else {
+      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+    }
+  };
+
   if (!policies || policies.length === 0) {
     return (
       <div className="text-center p-8 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-500">
@@ -78,7 +115,7 @@ export function PolicyTable({ policies }: { policies: Policy[] }) {
         </thead>
         <tbody suppressHydrationWarning className="divide-y divide-slate-200 dark:divide-slate-800">
           {policies.map((policy) => (
-            <tr key={policy.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+            <tr key={policy.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-700 ${highlightId === policy.id ? 'bg-yellow-50 dark:bg-yellow-900/30 outline outline-2 outline-yellow-400 shadow-lg relative z-10' : ''}`}>
               <td className="px-6 py-4 whitespace-nowrap text-slate-900 dark:text-slate-100 font-medium">
                 {policy.beneficiary}
               </td>
@@ -99,9 +136,11 @@ export function PolicyTable({ policies }: { policies: Policy[] }) {
               </td>
               <td suppressHydrationWarning className="px-6 py-4 whitespace-nowrap">
                 {policy.premiumMethod === "single" ? (
-                  <span className="text-slate-400 font-medium text-xs tracking-wide">N/A</span>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-sm ${getBadgeColor(policy)}`}>
+                    N/A
+                  </span>
                 ) : (
-                  <span suppressHydrationWarning className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800 shadow-sm">
+                  <span suppressHydrationWarning className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-sm ${getBadgeColor(policy)}`}>
                     {getNextDate(policy)}
                   </span>
                 )}
