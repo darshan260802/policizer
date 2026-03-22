@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String             @id @default(cuid())
+  email         String             @unique
+  password      String
+  name          String?
+  policies      Policy[]
+  subscriptions PushSubscription[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model Policy {
+  id              String   @id @default(cuid())
+  userId          String
+  beneficiary     String
+  startDate       DateTime
+  maturityDate    DateTime?
+  lastPremiumDate DateTime?
+  premiumMethod   String   // e.g., 'single', 'monthly', 'quarterly', 'half_yearly', 'yearly'
+  premiumAmount   Float
+  sumAssured      Float
+  note            String?
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
