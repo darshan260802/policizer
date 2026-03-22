@@ -17,7 +17,8 @@ export async function POST(req: Request) {
       data: { email, password: hashedPassword, name }
     });
     return NextResponse.json({ message: "Registered successfully" }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+  } catch (error: any) {
+    console.error("Registration error:", error);
+    return NextResponse.json({ error: error.message || "Something went wrong connecting to the database." }, { status: 500 });
   }
 }
