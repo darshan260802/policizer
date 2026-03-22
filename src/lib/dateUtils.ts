@@ -7,55 +7,54 @@ export function formatDate(date: string | Date | null): string {
   return `${day}/${month}/${year}`;
 }
 
+function incrementCycle(nextDate: Date, startDay: number, method: string) {
+  let y = nextDate.getUTCFullYear();
+  let m = nextDate.getUTCMonth();
+
+  if (method === "monthly") m += 1;
+  else if (method === "quarterly") m += 3;
+  else if (method === "half_yearly") m += 6;
+  else if (method === "yearly") m += 12;
+
+  const yearsToAdd = Math.floor(m / 12);
+  y += yearsToAdd;
+  m = m % 12;
+
+  const daysInNextMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const clampedDay = Math.min(startDay, daysInNextMonth);
+
+  return new Date(Date.UTC(y, m, clampedDay));
+}
+
 export function calculateNextPremiumDate(
   startDateStr: string | Date,
   method: string,
-  lastPremiumDateStr?: string | Date | null
+  endDateStr?: string | Date | null,
+  lastPaidDateStr?: string | Date | null
 ): Date | null {
   if (method === "single" || !startDateStr) return null;
 
   const start = new Date(startDateStr);
-  const startYear = start.getUTCFullYear();
-  const startMonth = start.getUTCMonth();
   const startDay = start.getUTCDate();
 
-  const now = new Date();
-  
-  // Baseline compares strictly at midnight UTC to prevent local hour offset bugs
-  const baseline = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-
-  let nextDate = new Date(Date.UTC(startYear, startMonth, startDay));
-
-  // Advance by purely mathematical interval until strictly on or after today
-  while (nextDate < baseline) {
-    let y = nextDate.getUTCFullYear();
-    let m = nextDate.getUTCMonth();
-
-    if (method === "monthly") {
-      m += 1;
-    } else if (method === "quarterly") {
-      m += 3;
-    } else if (method === "half_yearly") {
-      m += 6;
-    } else if (method === "yearly") {
-      y += 1;
-    }
-
-    // Roll over into correct year
-    const yearsToAdd = Math.floor(m / 12);
-    y += yearsToAdd;
-    m = m % 12;
-
-    // End-of-month clamp logic (e.g. Jan 31 -> Feb 28, but retains 31 for March)
-    const daysInNextMonth = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-    const clampedDay = Math.min(startDay, daysInNextMonth);
-
-    nextDate = new Date(Date.UTC(y, m, clampedDay));
+  let baseline: Date;
+  if (lastPaidDateStr) {
+    const lp = new Date(lastPaidDateStr);
+    baseline = new Date(Date.UTC(lp.getUTCFullYear(), lp.getUTCMonth(), lp.getUTCDate()));
+  } else {
+    const now = new Date();
+    baseline = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    baseline.setUTCDate(baseline.getUTCDate() - 1); 
   }
 
-  // If the next due date exceeds the final "End Date" (lastPremiumDate), it's fully paid!
-  if (lastPremiumDateStr) {
-    const endDate = new Date(lastPremiumDateStr);
+  let nextDate = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), startDay));
+
+  while (nextDate <= baseline) {
+    nextDate = incrementCycle(nextDate, startDay, method);
+  }
+
+  if (endDateStr) {
+    const endDate = new Date(endDateStr);
     const endUTC = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()));
     if (nextDate > endUTC) {
       return null;
@@ -63,4 +62,47 @@ export function calculateNextPremiumDate(
   }
 
   return nextDate;
+}
+
+export function generatePremiumSchedules(
+  policyId: string,
+  startDateStr: string | Date,
+  method: string,
+  endDateStr?: string | Date | null,
+  lastPaidDateStr?: string | Date | null
+) {
+  if (method === "single" || !startDateStr) return [];
+
+  const start = new Date(startDateStr);
+  const startDay = start.getUTCDate();
+  
+  let endUTC: Date;
+  if (endDateStr) {
+    const endDate = new Date(endDateStr);
+    endUTC = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), endDate.getUTCDate()));
+  } else {
+    endUTC = new Date(Date.UTC(start.getUTCFullYear() + 50, start.getUTCMonth(), start.getUTCDate()));
+  }
+
+  let paidLimitUTC: Date | null = null;
+  if (lastPaidDateStr) {
+    const lp = new Date(lastPaidDateStr);
+    paidLimitUTC = new Date(Date.UTC(lp.getUTCFullYear(), lp.getUTCMonth(), lp.getUTCDate()));
+  } else {
+    const now = new Date();
+    paidLimitUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  }
+
+  const schedules = [];
+  let nextDate = incrementCycle(new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), startDay)), startDay, method);
+
+  while (nextDate <= endUTC) {
+    schedules.push({
+      policyId,
+      date: nextDate,
+      isPaid: paidLimitUTC ? nextDate <= paidLimitUTC : false
+    });
+    nextDate = incrementCycle(nextDate, startDay, method);
+  }
+  return schedules;
 }

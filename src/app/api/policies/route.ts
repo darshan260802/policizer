@@ -16,7 +16,7 @@ export async function GET() {
 }
 
 import webpush from "@/lib/webpush";
-import { calculateNextPremiumDate, formatDate } from "@/lib/dateUtils";
+import { generatePremiumSchedules, formatDate } from "@/lib/dateUtils";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -25,6 +25,7 @@ export async function POST(req: Request) {
 
   try {
     const data = await req.json();
+    const { premiumMethod, startDate, lastPremiumDate } = data;
     const policy = await prisma.policy.create({
       data: {
         ...data,
@@ -35,28 +36,40 @@ export async function POST(req: Request) {
       }
     });
 
-    if (policy.premiumMethod !== "single" && policy.user.subscriptions.length > 0) {
-      const nextDate = calculateNextPremiumDate(policy.startDate, policy.premiumMethod, policy.lastPremiumDate);
-      
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      const targetDate = new Date(today);
-      targetDate.setDate(targetDate.getDate() + 10);
+    if (premiumMethod !== "single") {
+      const schedules = generatePremiumSchedules(policy.id, startDate, premiumMethod, lastPremiumDate);
+      if (schedules.length > 0) {
+        await prisma.premiumSchedule.createMany({ data: schedules });
+      }
 
-      if (nextDate && nextDate >= today && nextDate <= targetDate) {
-        const payload = JSON.stringify({
-          title: "Upcoming Premium!",
-          body: `Premium for ${policy.beneficiary} is due within 10 days on ${formatDate(nextDate)}`,
-          url: `/dashboard?highlight=${policy.id}`
-        });
+      const firstUnpaid = schedules.find(s => !s.isPaid);
+      const nextDate = firstUnpaid ? firstUnpaid.date : null;
 
-        for (const sub of policy.user.subscriptions) {
-          try {
-            await webpush.sendNotification({
-              endpoint: sub.endpoint,
-              keys: { p256dh: sub.p256dh, auth: sub.auth }
-            }, payload);
-          } catch (err) {}
+      if (nextDate && policy.user.subscriptions.length > 0) {
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const targetDate = new Date(today);
+        targetDate.setDate(today.getDate() + 10);
+
+        if (nextDate >= today && nextDate <= targetDate) {
+          const payload = JSON.stringify({
+            title: "Upcoming Premium!",
+            body: `Premium for ${policy.beneficiary} is due within 10 days on ${formatDate(nextDate)}`,
+            url: `/dashboard?highlight=${policy.id}`
+          });
+
+          for (const sub of policy.user.subscriptions) {
+            try {
+              await webpush.sendNotification(
+                { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+                payload
+              );
+            } catch (err: any) {
+              if (err.statusCode === 410 || err.statusCode === 404) {
+                await prisma.pushSubscription.delete({ where: { id: sub.id } });
+              }
+            }
+          }
         }
       }
     }

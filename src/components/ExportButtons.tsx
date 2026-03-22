@@ -10,7 +10,7 @@ import { calculateNextPremiumDate, formatDate } from "@/lib/dateUtils";
 export function ExportButtons({ policies }: { policies: Policy[] }) {
   const exportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(policies.map(p => {
-      const nextDate = calculateNextPremiumDate(p.startDate, p.premiumMethod, p.lastPremiumDate);
+      const nextDate = calculateNextPremiumDate(p.startDate, p.premiumMethod, p.lastPremiumDate, (p as any).lastPaidDate);
       return {
         Beneficiary: p.beneficiary,
         "Premium Method": p.premiumMethod,
@@ -30,9 +30,9 @@ export function ExportButtons({ policies }: { policies: Policy[] }) {
   const exportPDF = () => {
     const doc = new jsPDF();
     autoTable(doc, {
-      head: [["Beneficiary", "Method", "Start Date", "End Date", "Next Premium", "Amount"]],
+      head: [["Beneficiary", "Method", "Start Date", "End Date", "Next Premium", "Amount", "Note"]],
       body: policies.map((p) => {
-        const nextDate = calculateNextPremiumDate(p.startDate, p.premiumMethod, p.lastPremiumDate);
+        const nextDate = calculateNextPremiumDate(p.startDate, p.premiumMethod, p.lastPremiumDate, (p as any).lastPaidDate);
         return [
           p.beneficiary,
           p.premiumMethod,
@@ -40,6 +40,7 @@ export function ExportButtons({ policies }: { policies: Policy[] }) {
           formatDate(p.lastPremiumDate),
           nextDate ? formatDate(nextDate) : "COMPLETED",
           `$${p.premiumAmount}`,
+          p.note || "-",
         ];
       }),
     });

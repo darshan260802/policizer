@@ -21,7 +21,7 @@ export async function GET() {
     for (const policy of policies) {
       if (!policy.user.subscriptions.length) continue;
 
-      const nextDate = calculateNextPremiumDate(policy.startDate, policy.premiumMethod, policy.lastPremiumDate);
+      const nextDate = calculateNextPremiumDate(policy.startDate, policy.premiumMethod, policy.lastPremiumDate, (policy as any).lastPaidDate);
 
       if (nextDate && nextDate >= today && nextDate <= targetDate) {
         const payload = JSON.stringify({

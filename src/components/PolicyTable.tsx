@@ -2,7 +2,7 @@
 
 import { Policy } from "@prisma/client";
 import { calculateNextPremiumDate, formatDate } from "@/lib/dateUtils";
-import { Trash2, Edit2, Loader2 } from "lucide-react";
+import { Trash2, Edit2, Loader2, CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
@@ -12,6 +12,7 @@ export function PolicyTable({ policies }: { policies: Policy[] }) {
   const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [markingPaidId, setMarkingPaidId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -27,6 +28,20 @@ export function PolicyTable({ policies }: { policies: Policy[] }) {
       }
     }
   }, []);
+
+  async function handleMarkPaid(policy: any) {
+    const nextScheduleId = policy.schedules?.[0]?.id;
+    if (!nextScheduleId) return;
+    
+    setMarkingPaidId(policy.id);
+    await fetch(`/api/schedules/${nextScheduleId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isPaid: true })
+    });
+    setMarkingPaidId(null);
+    router.refresh();
+  }
 
   async function handleDelete(id: string) {
     if (!confirm("Are you sure you want to delete this policy?")) return;
@@ -62,24 +77,49 @@ export function PolicyTable({ policies }: { policies: Policy[] }) {
     router.refresh();
   }
 
-  const getNextDate = (policy: Policy) => {
+  const getNextDate = (policy: any) => {
     if (policy.premiumMethod === "single") return "N/A";
-    const nextDate = calculateNextPremiumDate(policy.startDate, policy.premiumMethod, policy.lastPremiumDate);
-    if (!nextDate) return "COMPLETED";
-    return formatDate(nextDate);
+    const nextDateRaw = policy.schedules?.[0]?.date;
+    if (!nextDateRaw) return "COMPLETED";
+    return formatDate(nextDateRaw);
   };
 
-  const getBadgeColor = (policy: Policy) => {
-    if (policy.premiumMethod === "single") return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
-    const nextDate = calculateNextPremiumDate(policy.startDate, policy.premiumMethod, policy.lastPremiumDate);
-    if (!nextDate) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+  const getRemainingDaysPayload = (policy: any) => {
+    if (policy.premiumMethod === "single") return null;
+    const nextDateRaw = policy.schedules?.[0]?.date;
+    if (!nextDateRaw) return null;
+    const nextDate = new Date(nextDateRaw);
     
     const today = new Date();
     today.setHours(0,0,0,0);
     const diffTime = nextDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    if (diffDays === 0) {
+    let text = "";
+    if (diffDays < 0) text = `${Math.abs(diffDays)}D LATE`;
+    else if (diffDays === 0) text = "TODAY";
+    else if (diffDays <= 60) text = `${diffDays}D`;
+    else {
+      const months = Math.floor(diffDays / 30);
+      if (months > 24) text = `${Math.floor(months / 12)}Y`;
+      else text = `${months}M`;
+    }
+    return { diffDays, text };
+  };
+
+  const getBadgeColor = (policy: any) => {
+    if (policy.premiumMethod === "single") return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+    const nextDateRaw = policy.schedules?.[0]?.date;
+    if (!nextDateRaw) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800";
+    
+    const nextDate = new Date(nextDateRaw);
+    
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const diffTime = nextDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays <= 0) {
       return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800 animate-pulse";
     } else if (diffDays <= 10) {
       return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800";
@@ -109,6 +149,7 @@ export function PolicyTable({ policies }: { policies: Policy[] }) {
             <th className="px-6 py-4 text-left font-semibold text-slate-700 dark:text-slate-300">End Date</th>
             <th className="px-6 py-4 text-left font-semibold text-slate-700 dark:text-slate-300">Next Premium</th>
             <th className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">Sum Assured</th>
+            <th className="px-6 py-4 text-left font-semibold text-slate-700 dark:text-slate-300">Note</th>
             <th className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">Premium</th>
             <th className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">Actions</th>
           </tr>
@@ -134,25 +175,44 @@ export function PolicyTable({ policies }: { policies: Policy[] }) {
                   <span className="text-slate-400">-</span>
                 )}
               </td>
-              <td suppressHydrationWarning className="px-6 py-4 whitespace-nowrap">
+              <td suppressHydrationWarning className="px-6 py-4 whitespace-nowrap flex items-center gap-2">
                 {policy.premiumMethod === "single" ? (
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-sm ${getBadgeColor(policy)}`}>
                     N/A
                   </span>
                 ) : (
-                  <span suppressHydrationWarning className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-sm ${getBadgeColor(policy)}`}>
-                    {getNextDate(policy)}
-                  </span>
+                  <>
+                    <span suppressHydrationWarning className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-sm ${getBadgeColor(policy)}`}>
+                      {getNextDate(policy)}
+                    </span>
+                    {getNextDate(policy) !== "COMPLETED" && (
+                      <span suppressHydrationWarning className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] uppercase tracking-wide font-bold border shadow-sm ${getBadgeColor(policy)}`}>
+                        {getRemainingDaysPayload(policy)?.text}
+                      </span>
+                    )}
+                  </>
                 )}
               </td>
               <td suppressHydrationWarning className="px-6 py-4 whitespace-nowrap text-right font-medium text-slate-700 dark:text-slate-300">
                 ${policy.sumAssured.toLocaleString()}
               </td>
+              <td suppressHydrationWarning className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 max-w-[150px] truncate" title={policy.note || ""}>
+                {policy.note || "-"}
+              </td>
               <td suppressHydrationWarning className="px-6 py-4 whitespace-nowrap text-right font-bold text-blue-600 dark:text-blue-400">
                 ${policy.premiumAmount.toFixed(2)}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                <button onClick={() => setEditingPolicy(policy)} className="text-slate-400 hover:text-blue-600 mr-4 transition-colors" title="Edit">
+              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex justify-end gap-3 items-center">
+                {policy.premiumMethod !== "single" && getNextDate(policy) !== "COMPLETED" && (getRemainingDaysPayload(policy)?.diffDays ?? 999) <= 20 && (
+                  <button
+                    onClick={() => handleMarkPaid(policy)}
+                    disabled={markingPaidId === policy.id}
+                    className="flex inline-flex items-center gap-1 text-[11px] px-2 py-1 font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md transition shadow hover:shadow-md disabled:opacity-50"
+                  >
+                    {markingPaidId === policy.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "PAID"}
+                  </button>
+                )}
+                <button onClick={() => setEditingPolicy(policy)} className="text-slate-400 hover:text-blue-600 transition-colors" title="Edit">
                   <Edit2 className="w-4 h-4 inline" />
                 </button>
                 <button onClick={() => handleDelete(policy.id)} disabled={loadingId === policy.id} className="text-slate-400 hover:text-red-600 transition-colors disabled:opacity-50" title="Delete">

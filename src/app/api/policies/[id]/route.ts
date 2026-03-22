@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
-import { getServerSession } from "next-auth/next";
+import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import prisma from "@/lib/prisma";
+import { generatePremiumSchedules } from "@/lib/dateUtils";
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
@@ -27,11 +28,21 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   try {
     const data = await req.json();
-    await prisma.policy.updateMany({
+
+    const updated = await prisma.policy.update({
       where: { id, userId },
       data,
     });
-    return NextResponse.json({ success: true });
+
+    if (data.premiumMethod !== "single") {
+      await prisma.premiumSchedule.deleteMany({ where: { policyId: id } }); 
+      const schedules = generatePremiumSchedules(updated.id, updated.startDate, updated.premiumMethod, updated.lastPremiumDate, updated.lastPaidDate);
+      if (schedules.length > 0) {
+        await prisma.premiumSchedule.createMany({ data: schedules });
+      }
+    }
+
+    return NextResponse.json(updated);
   } catch (error) {
     return NextResponse.json({ error: "Failed to update" }, { status: 500 });
   }
