@@ -12,22 +12,34 @@ export function PushNotificationManager() {
   useEffect(() => {
     if ("serviceWorker" in navigator && "PushManager" in window) {
       setIsSupported(true);
-      registerServiceWorker();
+      checkExistingSubscription();
     } else {
       setLoading(false);
     }
   }, []);
 
-  async function registerServiceWorker() {
+  async function checkExistingSubscription() {
     try {
-      const registration = await navigator.serviceWorker.register("/sw.js", {
-        scope: "/",
-        updateViaCache: "none",
-      });
+      // Wait for the serwist-managed service worker instead of re-registering
+      const registration = await navigator.serviceWorker.ready;
       const sub = await registration.pushManager.getSubscription();
       setSubscription(sub);
     } catch (error) {
-      console.error("Service worker registration failed", error);
+      console.error("Failed to check push subscription", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function unsubscribeFromPush() {
+    try {
+      setLoading(true);
+      if (subscription) {
+        await subscription.unsubscribe();
+        setSubscription(null);
+      }
+    } catch (error) {
+      console.error("Error unsubscribing from push", error);
     } finally {
       setLoading(false);
     }
@@ -76,7 +88,7 @@ export function PushNotificationManager() {
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       disabled={loading}
-      onClick={subscription ? undefined : subscribeToPush}
+      onClick={subscription ? unsubscribeFromPush : subscribeToPush}
       className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors ${
         subscription
           ? "bg-slate-100 text-slate-500 cursor-default dark:bg-slate-800 dark:text-slate-400"
