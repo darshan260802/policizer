@@ -3,6 +3,8 @@ import prisma from "@/lib/prisma";
 import webpush from "@/lib/webpush";
 import { calculateNextPremiumDate, formatDate } from "@/lib/dateUtils";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const policies = await prisma.policy.findMany({
